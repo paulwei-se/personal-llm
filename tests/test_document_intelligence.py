@@ -12,7 +12,7 @@ def test_document_intelligence():
     # Process and index sample documents
     sample_dir = os.path.join(os.path.dirname(__file__), 'sample_documents')
     for filename in os.listdir(sample_dir):
-        if filename.endswith(('.jpg', '.png')):
+        if filename.endswith(('.jpg', '.png','.pdf')):
             file_path = os.path.join(sample_dir, filename)
             doc_id = di.process_and_index_document(file_path)
             print(f"Processed and indexed document: {filename} (ID: {doc_id})")
