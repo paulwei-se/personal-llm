@@ -1,0 +1,36 @@
+# Ignore test directory
+tests/
+
+# Ignore any cached Python files
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Ignore git directory
+.git
+
+# Ignore editor specific files
+.vscode/
+.idea/
+
+# Ignore any local development files
+*.log
+.env
+
+# Ignore the virtual environment if it's in the project directory
+venv/
+env/
+
+# Ignore any documentation files
+*.md
+docs/
+
+# Ignore any data files that shouldn't be in the image
+*.csv
+*.json
+*.xlsx
+
+# Ignore the Dockerfile itself and docker-compose if it exists
+Dockerfile
+docker-compose.yml

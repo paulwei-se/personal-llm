@@ -1,5 +1,6 @@
 import os
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from document_processing.processor import DocumentProcessor
 from search.semantic_search import SemanticSearch
 from qa_summary.qa_summarizer import QASummarizer
@@ -9,7 +10,7 @@ from ethical_ai.explainer import AIExplainer
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class DocumentIntelligence:
-    def __init__(self):
+    def __init__(self, max_workers=4):
         self.document_processor = DocumentProcessor()
         self.semantic_search = SemanticSearch()
         self.qa_summarizer = QASummarizer()
@@ -17,6 +18,7 @@ class DocumentIntelligence:
         self.ai_explainer = AIExplainer()
         self.documents = {}  # Store processed documents with their IDs
         self.logger = logging.getLogger(__name__)
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
     def process_and_index_document(self, document_path):
         """Process a document and add it to the semantic search index."""
@@ -38,6 +40,23 @@ class DocumentIntelligence:
         except Exception as e:
             self.logger.error(f"Error processing document {document_path}: {str(e)}")
             return None
+    
+    def bulk_process_and_index(self, document_paths):
+        """Process and index multiple documents concurrently."""
+        futures = []
+        for path in document_paths:
+            future = self.executor.submit(self.process_and_index_document, path)
+            futures.append(future)
+
+        results = []
+        for future in as_completed(futures):
+            try:
+                doc_id = future.result()
+                results.append(doc_id)
+            except Exception as e:
+                self.logger.error(f"Error in bulk processing: {str(e)}")
+
+        return results
 
     def search(self, query, k=5):
         """Perform a semantic search on the indexed documents."""
