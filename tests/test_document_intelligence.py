@@ -48,7 +48,10 @@ def test_document_intelligence():
         answer = di.answer_question(question, first_doc_id)
         print(f"\nQuestion: {question}")
         print(f"Answer: {answer['answer']}")
+        print(f"Explanation: {answer['explanation']}")
         print(f"Confidence: {answer['score']:.4f}")
+        bias_result = di.detect_bias(first_doc_id)
+        print("Bias Detection Result:", bias_result)
     
     # Test summarization
     if di.documents:

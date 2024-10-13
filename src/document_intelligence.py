@@ -3,6 +3,8 @@ import logging
 from document_processing.processor import DocumentProcessor
 from search.semantic_search import SemanticSearch
 from qa_summary.qa_summarizer import QASummarizer
+from ethical_ai.bias_detector import BiasDetector
+from ethical_ai.explainer import AIExplainer
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -11,6 +13,8 @@ class DocumentIntelligence:
         self.document_processor = DocumentProcessor()
         self.semantic_search = SemanticSearch()
         self.qa_summarizer = QASummarizer()
+        self.bias_detector = BiasDetector()
+        self.ai_explainer = AIExplainer()
         self.documents = {}  # Store processed documents with their IDs
         self.logger = logging.getLogger(__name__)
 
@@ -67,8 +71,9 @@ class DocumentIntelligence:
             
             document = self.documents[doc_id]['content']
             answer = self.qa_summarizer.answer_question(document, question)
-            self.logger.info(f"Answered question for document {doc_id} in {self.documents[doc_id]['language']}")
-            return answer
+            explanation = self.ai_explainer.explain_answer(document, question, answer['answer'])
+            self.logger.info(f"Answered question for document {doc_id} with explanation in {self.documents[doc_id]['language']}")
+            return {**answer, 'explanation': explanation}
         except Exception as e:
             self.logger.error(f"Error answering question for document {doc_id}: {str(e)}")
             return {"answer": "Unable to answer the question", "score": 0.0}
@@ -87,6 +92,19 @@ class DocumentIntelligence:
         except Exception as e:
             self.logger.error(f"Error summarizing document {doc_id}: {str(e)}")
             return "Unable to generate summary"
+        
+    def detect_bias(self, doc_id):
+        """Detect potential bias in a document."""
+        try:
+            document = self.documents[doc_id]['content']
+            sentences = document.split('.')  # Simple sentence splitting
+            sentiment_bias = self.bias_detector.detect_sentiment_bias(sentences)
+            toxicity = self.bias_detector.detect_toxicity(sentences)
+            self.logger.info(f"Detected bias for document {doc_id}")
+            return {'sentiment_bias': sentiment_bias, 'toxicity': toxicity}
+        except Exception as e:
+            self.logger.error(f"Error detecting bias for document {doc_id}: {str(e)}")
+            raise
 
 # Usage example
 if __name__ == "__main__":
