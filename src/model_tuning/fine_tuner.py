@@ -1,7 +1,9 @@
 from transformers import AutoModelForQuestionAnswering, AutoTokenizer, Trainer, TrainingArguments
 from datasets import Dataset
 import torch
+import asyncio
 
+# this is not ready yet
 class ModelFineTuner:
     def __init__(self, model_name="bert-base-uncased"):
         self.model_name = model_name
@@ -63,8 +65,14 @@ class ModelFineTuner:
         inputs["end_positions"] = end_positions
         return inputs
 
-    def fine_tune(self, train_data, eval_data, output_dir, num_train_epochs=3):
-        """Fine-tune the model on given data."""
+    async def fine_tune(self, document, questions_answers, output_dir, num_train_epochs=3):
+        train_data = {
+            "context": [document] * len(questions_answers),
+            "question": [qa["question"] for qa in questions_answers],
+            "answers": [{"answer_start": [document.index(qa["answer"])], "text": [qa["answer"]]} for qa in questions_answers]
+        }
+        eval_data = {k: v[:1] for k, v in train_data.items()}
+
         train_dataset = Dataset.from_dict(train_data)
         eval_dataset = Dataset.from_dict(eval_data)
 
@@ -88,9 +96,9 @@ class ModelFineTuner:
             eval_dataset=eval_dataset,
         )
 
-        trainer.train()
-        trainer.save_model(output_dir)
-        self.tokenizer.save_pretrained(output_dir)
+        await asyncio.to_thread(trainer.train)
+        await asyncio.to_thread(trainer.save_model, output_dir)
+        await asyncio.to_thread(self.tokenizer.save_pretrained, output_dir)
 
 # Usage example
 if __name__ == "__main__":
