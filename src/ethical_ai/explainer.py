@@ -1,27 +1,22 @@
 from transformers import pipeline
 import numpy as np
+import asyncio
 
 class AIExplainer:
     def __init__(self):
         self.qa_pipeline = pipeline("question-answering")
 
-    def explain_answer(self, context, question, answer):
-        """Provide a simple explanation for the AI-generated answer."""
-        # Use the QA pipeline to get the answer and its score
-        result = self.qa_pipeline(question=question, context=context)
+    async def explain_answer(self, context, question, answer):
+        result = await asyncio.to_thread(self.qa_pipeline, question=question, context=context)
         
-        # Calculate the relevance of each word in the context to the answer
         words = context.split()
         word_scores = []
         for i, word in enumerate(words):
             temp_context = ' '.join(words[:i] + ['[MASK]'] + words[i+1:])
-            temp_result = self.qa_pipeline(question=question, context=temp_context)
+            temp_result = await asyncio.to_thread(self.qa_pipeline, question=question, context=temp_context)
             word_scores.append(abs(result['score'] - temp_result['score']))
         
-        # Normalize word scores
         word_scores = np.array(word_scores) / np.max(word_scores)
-        
-        # Get the top 5 most relevant words
         top_words = [words[i] for i in np.argsort(word_scores)[-5:][::-1]]
         
         explanation = f"The AI system found this answer with a confidence of {result['score']:.2f}. "

@@ -1,7 +1,7 @@
-import os
+import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from document_processing.processor import DocumentProcessor
+from document_processing.processor import DocumentProcessor, chunk_document
 from search.semantic_search import SemanticSearch
 from qa_summary.qa_summarizer import QASummarizer
 from ethical_ai.bias_detector import BiasDetector
@@ -20,22 +20,22 @@ class DocumentIntelligence:
         self.logger = logging.getLogger(__name__)
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
-    def process_and_index_document(self, document_path):
-        """Process a document and add it to the semantic search index."""
+    async def process_and_index_document(self, document_path):
+        doc_id = str(len(self.documents) + 1)
         try:
-            doc_id = str(len(self.documents) + 1)
-            processed_doc = self.document_processor.process_document(document_path)
+            text = await asyncio.to_thread(self.document_processor.extract_text, document_path)
+            chunks = await asyncio.to_thread(chunk_document, text)
+            layout = await asyncio.to_thread(self.document_processor.analyze_layout, document_path)
             
             self.documents[doc_id] = {
                 'path': document_path,
-                'content': processed_doc['text'],
-                'layout': processed_doc['layout'],
-                'language': self.semantic_search.detect_language(processed_doc['text'])
+                'content': text,
+                'chunks': chunks,
+                'layout': layout,
+                'language': await asyncio.to_thread(self.semantic_search.detect_language, text)
             }
             
-            self.semantic_search.add_documents([processed_doc['text']])
-            
-            self.logger.info(f"Successfully processed and indexed document: {document_path} (ID: {doc_id}, Language: {self.documents[doc_id]['language']})")
+            await self.semantic_search.add_documents(chunks, doc_id)
             return doc_id
         except Exception as e:
             self.logger.error(f"Error processing document {document_path}: {str(e)}")
@@ -57,73 +57,55 @@ class DocumentIntelligence:
                 self.logger.error(f"Error in bulk processing: {str(e)}")
 
         return results
+    
+    async def remove_document(self, doc_id):
+        if doc_id in self.documents:
+            await self.semantic_search.remove_document(doc_id)
+            del self.documents[doc_id]
+            return True
+        return False
 
-    def search(self, query, k=5):
-        """Perform a semantic search on the indexed documents."""
-        try:
-            results = self.semantic_search.search(query, k)
-            
-            enriched_results = []
-            for result in results:
-                doc_id = next((id for id, doc in self.documents.items() if doc['content'] == result['document']), None)
-                if doc_id is not None:
-                    enriched_results.append({
-                        'doc_id': doc_id,
-                        'path': self.documents[doc_id]['path'],
-                        'score': result['score'],
-                        'snippet': result['document'][:200] + '...',
-                        'language': result['language']
-                    })
-            
-            self.logger.info(f"Search query '{query}' returned {len(enriched_results)} results")
-            return enriched_results
-        except Exception as e:
-            self.logger.error(f"Error performing search with query '{query}': {str(e)}")
-            return []
+    async def search(self, query, k=5):
+        results = await self.semantic_search.search(query, k)
+        return [
+            {
+                'doc_id': result['doc_id'],
+                'chunk_id': result['chunk_id'],
+                'path': self.documents[result['doc_id']]['path'],
+                'score': result['score'],
+                'snippet': result['chunk'][:200] + '...',
+                'language': result['language']
+            }
+            for result in results
+        ]
 
-    def answer_question(self, question, doc_id):
-        """Answer a question based on a specific document."""
-        try:
-            if doc_id not in self.documents:
-                self.logger.warning(f"Document ID {doc_id} not found")
-                return {"answer": "Document not found", "score": 0.0}
-            
-            document = self.documents[doc_id]['content']
-            answer = self.qa_summarizer.answer_question(document, question)
-            explanation = self.ai_explainer.explain_answer(document, question, answer['answer'])
-            self.logger.info(f"Answered question for document {doc_id} with explanation in {self.documents[doc_id]['language']}")
-            return {**answer, 'explanation': explanation}
-        except Exception as e:
-            self.logger.error(f"Error answering question for document {doc_id}: {str(e)}")
-            return {"answer": "Unable to answer the question", "score": 0.0}
-
-    def summarize_document(self, doc_id, max_length=150, min_length=50):
-        """Generate a summary for a specific document."""
-        try:
-            if doc_id not in self.documents:
-                self.logger.warning(f"Document ID {doc_id} not found")
-                return "Document not found"
-            
-            document = self.documents[doc_id]['content']
-            summary = self.qa_summarizer.summarize_text(document, max_length, min_length)
-            self.logger.info(f"Generated summary for document {doc_id} in {self.documents[doc_id]['language']}")
-            return summary
-        except Exception as e:
-            self.logger.error(f"Error summarizing document {doc_id}: {str(e)}")
-            return "Unable to generate summary"
+    async def answer_question(self, question, doc_id):
+        if doc_id not in self.documents:
+            return {"answer": "Document not found", "score": 0.0}
         
-    def detect_bias(self, doc_id):
-        """Detect potential bias in a document."""
-        try:
-            document = self.documents[doc_id]['content']
-            sentences = document.split('.')  # Simple sentence splitting
-            sentiment_bias = self.bias_detector.detect_sentiment_bias(sentences)
-            toxicity = self.bias_detector.detect_toxicity(sentences)
-            self.logger.info(f"Detected bias for document {doc_id}")
-            return {'sentiment_bias': sentiment_bias, 'toxicity': toxicity}
-        except Exception as e:
-            self.logger.error(f"Error detecting bias for document {doc_id}: {str(e)}")
-            raise
+        relevant_chunks = await self.semantic_search.search(question, k=3, doc_id=doc_id)
+        context = " ".join([chunk['chunk'] for chunk in relevant_chunks])
+        answer = await self.qa_summarizer.answer_question(context, question, doc_id)
+        explanation = await self.ai_explainer.explain_answer(context, question, answer['answer'])
+        return {**answer, 'explanation': explanation}
+
+    async def summarize_document(self, doc_id, max_length=150, min_length=50):
+        if doc_id not in self.documents:
+            return "Document not found"
+        
+        document = self.documents[doc_id]['content']
+        summary = await self.qa_summarizer.summarize_text(document, max_length, min_length)
+        return summary
+
+    async def detect_bias(self, doc_id):
+        if doc_id not in self.documents:
+            return {"error": "Document not found"}
+        
+        document = self.documents[doc_id]['content']
+        sentences = document.split('.')  # Simple sentence splitting
+        sentiment_bias = await self.bias_detector.detect_sentiment_bias(sentences)
+        toxicity = await self.bias_detector.detect_toxicity(sentences)
+        return {'sentiment_bias': sentiment_bias, 'toxicity': toxicity}
 
 # Usage example
 if __name__ == "__main__":

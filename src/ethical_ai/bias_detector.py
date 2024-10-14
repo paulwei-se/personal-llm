@@ -1,14 +1,14 @@
 from transformers import pipeline
 import numpy as np
+import asyncio
 
 class BiasDetector:
     def __init__(self):
         self.sentiment_analyzer = pipeline("sentiment-analysis")
         self.toxic_classifier = pipeline("text-classification", model="unitary/toxic-bert")
 
-    def detect_sentiment_bias(self, texts):
-        """Detect potential sentiment bias in a list of texts."""
-        sentiments = self.sentiment_analyzer(texts)
+    async def detect_sentiment_bias(self, texts):
+        sentiments = await asyncio.to_thread(self.sentiment_analyzer, texts)
         positive_count = sum(1 for s in sentiments if s['label'] == 'POSITIVE')
         negative_count = sum(1 for s in sentiments if s['label'] == 'NEGATIVE')
         
@@ -19,9 +19,8 @@ class BiasDetector:
             'negative_ratio': negative_count / len(texts)
         }
 
-    def detect_toxicity(self, texts):
-        """Detect potential toxic content in a list of texts."""
-        toxicity_scores = self.toxic_classifier(texts)
+    async def detect_toxicity(self, texts):
+        toxicity_scores = await asyncio.to_thread(self.toxic_classifier, texts)
         toxic_count = sum(1 for t in toxicity_scores if t['label'] == 'toxic')
         
         return {

@@ -1,21 +1,29 @@
+import asyncio
 from transformers import pipeline
 
 class QASummarizer:
     def __init__(self):
         self.qa_pipeline = pipeline("question-answering")
         self.summarizer_pipeline = pipeline("summarization")
+        self.document_models = {}
 
-    def answer_question(self, context, question):
-        """Answer a question based on the given context."""
-        result = self.qa_pipeline(question=question, context=context)
+    async def update_model(self, doc_id, model_path):
+        self.document_models[doc_id] = pipeline("question-answering", model=model_path, tokenizer=model_path)
+
+    async def answer_question(self, context, question, doc_id=None):
+        if doc_id in self.document_models:
+            qa_pipeline = self.document_models[doc_id]
+        else:
+            qa_pipeline = self.qa_pipeline
+
+        result = await asyncio.to_thread(qa_pipeline, question=question, context=context)
         return {
             'answer': result['answer'],
             'score': result['score']
         }
 
-    def summarize_text(self, text, max_length=150, min_length=50):
-        """Generate a summary of the given text."""
-        summary = self.summarizer_pipeline(text, max_length=max_length, min_length=min_length, do_sample=False)
+    async def summarize_text(self, text, max_length=150, min_length=50):
+        summary = await asyncio.to_thread(self.summarizer_pipeline, text, max_length=max_length, min_length=min_length, do_sample=False)
         return summary[0]['summary_text']
 
 # Usage example
