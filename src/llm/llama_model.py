@@ -1,6 +1,6 @@
 import torch
 import torch.amp
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, LlamaConfig
 from typing import List, Dict, Any
 import logging
 import asyncio
@@ -35,14 +35,14 @@ class LlamaModel:
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4"
         )
-        
+                
         # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         # Add generation config
         self.generation_config = {
-            "max_length": 512,
+            "max_length": 128,
             "num_beams": 1,
             "pad_token_id": self.tokenizer.pad_token_id,
             "eos_token_id": self.tokenizer.eos_token_id,
@@ -50,16 +50,23 @@ class LlamaModel:
             "temperature": 0.7,
             "top_p": 0.95,
             "repetition_penalty": 1.15,
-            "use_cache": True
+            "use_cache": True,
+            "num_return_sequences": 1,
         }
+
+        config = LlamaConfig.from_pretrained(model_name)
+        config.use_flash_attention = True
         
         # Load model with optimizations
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
+            config=config,
             quantization_config=quantization_config,
             device_map="auto",
+            max_memory={0: "7.0GB"},
             torch_dtype=torch.float16,
-            low_cpu_mem_usage=True
+            low_cpu_mem_usage=True,
+            trust_remote_code=True
         )
 
         # Optimize model placement
@@ -82,7 +89,7 @@ class LlamaModel:
     ) -> str:
         """Generate text using the Llama model"""
         if max_length is None:
-            max_length = self.generation_config["max_new_tokens"]
+            max_length = self.generation_config["max_length"]
             
         pre_stats = self.gpu_monitor.get_stats()
         logger.info(f"Pre-generation GPU stats: {pre_stats}")
@@ -116,7 +123,7 @@ class LlamaModel:
     ) -> str:
         """Synchronous generation function with default values"""
         if max_length is None:
-            max_length = self.generation_config["max_new_tokens"]
+            max_length = self.generation_config["max_length"]
         if temperature is None:
             temperature = self.generation_config["temperature"]
         if top_p is None:
@@ -131,7 +138,7 @@ class LlamaModel:
         }
         
         with torch.amp.autocast('cuda'):
-            with torch.inference_mode():
+            with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
                     **generation_kwargs

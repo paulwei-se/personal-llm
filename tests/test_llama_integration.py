@@ -19,7 +19,7 @@ async def test_llama_basic():
     
     for prompt in prompts:
         start_time = time.time()
-        response = await llm.generate(prompt, max_length=256)
+        response = await llm.generate(prompt)
         end_time = time.time()
         
         print(f"\nPrompt: {prompt}")
