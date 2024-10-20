@@ -25,8 +25,9 @@ import re
 logger = logging.getLogger(__name__)
 
 class CustomConversationMemory(BaseMemory):
-   chat_memory: BaseChatMessageHistory = ChatMessageHistory()
+   chat_history: List[tuple[str, str]] = []
    return_messages: bool = True
+   max_history_turns: int = 10
    
    @property
    def memory_variables(self) -> List[str]:
@@ -35,24 +36,10 @@ class CustomConversationMemory(BaseMemory):
 
    def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, Any]) -> None:
         question = inputs["question"]
-        # Clean the answer if it still contains the prompt
-        # Clean the answer text
-        answer = outputs["answer"]
+        # Clean the answer
+        answer = outputs["answer"].strip()
         
-        # Remove markdown links
-        answer = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', answer)
-        
-        # Remove sections and headers
-        answer = re.sub(r'###.*?###', '', answer, flags=re.DOTALL)
-        answer = re.sub(r'#{1,6}\s.*?\n', '', answer)
-        
-        # Remove bullet points and example sections
-        answer = re.sub(r'Example Answer \d+', '', answer)
-        answer = re.sub(r'^\s*-\s+', '', answer, flags=re.MULTILINE)
-        
-        # Clean up whitespace
-        answer = re.sub(r'\n\s*\n', '\n', answer)
-        answer = answer.strip()
+        print("outputs:", outputs)
         
         # Extract actual answer if ANSWER: marker exists
         if "ANSWER:" in answer:
@@ -66,19 +53,22 @@ class CustomConversationMemory(BaseMemory):
         print("saved_answer:", answer)
         print("saved_source:", sources)
 
-        # Format the answer with sources if available
-        formatted_answer = f"{answer}"
         if sources:
-            formatted_answer += f"\n\nReferences:\n{chr(10).join(sources)}"
+            answer += f"\n\nReferences:\n{chr(10).join(sources)}"
 
-        self.chat_memory.add_user_message(question)
-        self.chat_memory.add_ai_message(formatted_answer)
+        if len(self.chat_history) >= self.max_history_turns:
+            self.chat_history = self.chat_history[2:]
+
+        # Store as tuple
+        self.chat_history.append((question, answer))
+
 
    def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, List[BaseMessage]]:
-       return {"chat_history": self.chat_memory.messages}
+        # Get last few exchanges for context
+        return {"chat_history": self.chat_history}
 
    def clear(self) -> None:
-       self.chat_memory.clear()
+        self.chat_history = []
 
 class LangChainLLamaWrapper(LLM, BaseModel):
     """Wrapper to make our LlamaModel compatible with LangChain"""
@@ -144,46 +134,24 @@ class RAGPipeline:
         # Initialize vector store
         self.vector_store = None
         
-        # Custom QA prompt
-        self.qa_template = """Use the following pieces of context to answer the question at the end. 
-        If you don't know the answer, just say that you don't know, don't try to make up an answer.
-        
-        Context: {context}
-        
-        Question: {question}
-        
-        Answer the question based on the context provided. Include the source document if relevant.
-        Answer:"""
-        
-        # self.qa_prompt = PromptTemplate(
-        #     template=self.qa_template,
-        #     input_variables=["context", "question"]
-        # )
-        
-        # # # Initialize memory
-        # # self.memory = ConversationBufferMemory(
-        # #     memory_key="chat_history",
-        # #     return_messages=True
-        # # )
         self.memory = CustomConversationMemory()
-         # Define a clean prompt template
-        # Simplified QA prompt 
+        
         self.qa_prompt = PromptTemplate.from_template(
             "Answer the following question based on the provided context.\n\n"
             "Context: {context}\n\n"
             "Question: {question}\n\n"
             "Provide a clear and concise answer without any special formatting, links, or sections.\n"
+            "Begin your answer with 'ANSWER:' and provide only the answer content:\n"
             "ANSWER:"
         )
         
         self.condense_question_prompt = PromptTemplate.from_template(
-            "Given the conversation below, rephrase the follow-up question to be a standalone question "
-            "that maintains the original intent.\n\n"
-            "Previous conversation:\n"
-            "Human: {chat_history_human}\n"  # We'll format this ourselves
-            "Assistant: {chat_history_ai}\n\n"  # We'll format this ourselves
+            "Given the conversation below, rephrase the follow-up question into a standalone question "
+            "that captures the original intent.\n\n"
+            "Chat History: {chat_history}\n"
             "Follow-up question: {question}\n\n"
-            "Standalone question:"
+            "Begin your rephrase with 'FOLLOWUP:' and provide only the follow-up question content:\n:"
+            "FOLLOWUP:"
         )
 
     async def initialize_vector_store(self, documents: Dict[str, str]) -> None:
@@ -209,20 +177,6 @@ class RAGPipeline:
                 collection_name="document_store"
             )
             
-            # Create retrieval chain
-            self.qa_chain = RetrievalQAWithSourcesChain.from_chain_type(
-                llm=self.llm,
-                chain_type="stuff",
-                retriever=self.vector_store.as_retriever(
-                    search_kwargs={"k": 3}
-                ),
-                return_source_documents=True,
-                chain_type_kwargs={
-                    "prompt": self.qa_prompt,
-                    "document_variable_name": "context"
-                }
-            )
-            
             logger.info(f"Initialized vector store with {len(processed_docs)} chunks")
             
         except Exception as e:
@@ -244,34 +198,7 @@ class RAGPipeline:
                 search_kwargs={"k": 3, "filter": {"source": doc_id}} if doc_id else {"k": 3}
             )
             
-            # Update the chain with the filtered retriever
-            self.qa_chain.retriever = retriever
             
-            # # Use nest_asyncio to handle nested event loops
-            # import nest_asyncio
-            # nest_asyncio.apply()
-            
-            # # Process query
-            # result = await asyncio.get_event_loop().run_in_executor(
-            #     None,
-            #     lambda: self.qa_chain({"question": question})
-            # )
-
-            # Format chat history properly for the condense prompt
-            messages = self.memory.load_memory_variables({})["chat_history"]
-            if len(messages) >= 2:  # If we have a previous Q&A pair
-                last_human = next(m.content for m in reversed(messages) if m.type == 'human')
-                last_ai = next(m.content for m in reversed(messages) if m.type == 'ai')
-                formatted_history = {
-                    "chat_history_human": last_human,
-                    "chat_history_ai": last_ai.split("\nReferences:")[0]  # Remove references
-                }
-            else:
-                formatted_history = {
-                    "chat_history_human": "",
-                    "chat_history_ai": ""
-                }
-
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
                 retriever=retriever,
@@ -283,7 +210,7 @@ class RAGPipeline:
                 },
                 condense_question_prompt=self.condense_question_prompt,
                 return_source_documents=True,
-                get_chat_history=lambda h: formatted_history,
+                get_chat_history=lambda h: h,
                 verbose=True
             )
 

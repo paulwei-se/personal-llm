@@ -41,7 +41,7 @@ class TestRAGPipeline:
         print("Result:", result1) 
         print("\nFirst Query Result:", result1)
         
-        result2 = await rag_fixture.process_query("Can you elaborate on that?")
+        result2 = await rag_fixture.process_query("Can you explain how it uses vector databases?")
         print("\nFollow-up Query Result:", result2)
         
         assert len(result2["chat_history"]) > len(result1["chat_history"])
