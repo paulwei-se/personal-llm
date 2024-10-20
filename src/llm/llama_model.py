@@ -42,7 +42,7 @@ class LlamaModel:
 
         # Add generation config
         self.generation_config = {
-            "max_length": 128,
+            "max_new_tokens": 256,
             "num_beams": 1,
             "pad_token_id": self.tokenizer.pad_token_id,
             "eos_token_id": self.tokenizer.eos_token_id,
@@ -55,7 +55,6 @@ class LlamaModel:
         }
 
         config = LlamaConfig.from_pretrained(model_name)
-        config.use_flash_attention = True
         
         # Load model with optimizations
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -89,7 +88,7 @@ class LlamaModel:
     ) -> str:
         """Generate text using the Llama model"""
         if max_length is None:
-            max_length = self.generation_config["max_length"]
+            max_length = self.generation_config["max_new_tokens"]
             
         pre_stats = self.gpu_monitor.get_stats()
         logger.info(f"Pre-generation GPU stats: {pre_stats}")
@@ -123,7 +122,7 @@ class LlamaModel:
     ) -> str:
         """Synchronous generation function with default values"""
         if max_length is None:
-            max_length = self.generation_config["max_length"]
+            max_length = self.generation_config["max_new_tokens"]
         if temperature is None:
             temperature = self.generation_config["temperature"]
         if top_p is None:
