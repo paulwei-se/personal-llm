@@ -99,6 +99,8 @@ class LlamaModel:
             padding=True,
             truncation=True,
         ).to(self.device)
+
+        logger.debug(f"LlamaModel received prompt: {prompt}")
         
         response = await asyncio.to_thread(
             self._generate_sync,
@@ -106,7 +108,8 @@ class LlamaModel:
             max_length,
             **kwargs
         )
-        
+        logger.debug(f"LlamaModel generated response: {response}")
+
         post_stats = self.gpu_monitor.get_stats()
         logger.info(f"Post-generation GPU stats: {post_stats}")
         
@@ -142,8 +145,14 @@ class LlamaModel:
                     **inputs,
                     **generation_kwargs
                 )
+        
+         # Get the length of the input prompt in tokens
+        prompt_length = inputs['input_ids'].shape[1]
+        
+        # Decode only the newly generated tokens, don't repeat the prompt
+        response = self.tokenizer.decode(outputs[0][prompt_length:], skip_special_tokens=True)
                 
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return response
     
     async def warmup(self):
         """Perform model warm-up to optimize GPU compilation"""
