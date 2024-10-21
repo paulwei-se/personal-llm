@@ -1,3 +1,4 @@
 doc_intelligence_env/
 __pycache__/
 tests/sample_documents/
+.env

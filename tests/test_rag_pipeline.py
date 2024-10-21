@@ -4,11 +4,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 import pytest_asyncio
+import asyncio
+import unittest
 from src.rag.rag_pipeline import RAGPipeline
 from src.llm.llama_model import LlamaModel
 import logging
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 @pytest_asyncio.fixture(scope="module")
 async def rag_fixture():
@@ -19,33 +22,34 @@ async def rag_fixture():
         "doc2": "RAG combines search with LLM generation to improve accuracy.",
         "doc3": "Vector databases store document embeddings for semantic search."
     }
-    await rag.initialize_vector_store(documents)
+    await rag.add_documents(documents, topic_id="langgraph")
     yield rag
-    await rag.clear_memory()
 
 @pytest.mark.asyncio
 class TestRAGPipeline:
-    # async def test_vector_store_initialization(self, rag_fixture):
-    #     assert rag_fixture.vector_store is not None
-
-    # async def test_single_document_query(self, rag_fixture):
-    #     result = await rag_fixture.process_query("What is LangChain?", doc_id="doc1")
-    #     print("RAG instance:", rag_fixture)
-    #     print("Result:", result) 
-    #     assert "framework" in result["answer"].lower()
-    #     assert result["sources"][0]["source"] == "doc1"
-
-    async def test_conversation_memory(self, rag_fixture):
-        result1 = await rag_fixture.process_query("What is LangChain?")
-        print("RAG instance:", rag_fixture)
-        print("Result:", result1) 
-        print("\nFirst Query Result:", result1)
+    async def test_basic_query(self, rag_fixture):
+        """Test basic query without streaming."""
+        query = "What is LangChain?"
+        states = []
+        # Collect all messages from the stream
+        async for state in rag_fixture.chat(
+            message=query,
+            user_id="test_user",
+            topic_id="langgraph"
+        ):
+            states.append(state)
+            
+        # Verify we got a response
+        assert len(states) > 0
+        assert isinstance(states[-1][-1], AIMessage)
         
-        result2 = await rag_fixture.process_query("Can you explain how it uses vector databases?")
-        print("\nFollow-up Query Result:", result2)
-        
-        assert len(result2["chat_history"]) > len(result1["chat_history"])
-        assert "framework" in result1["answer"].lower()
+        # Verify response content references source material
+        response_content = states[-1][-1].content.lower()
+        assert any([
+            "framework" in response_content,
+            "language model" in response_content,
+            "langchain" in response_content
+        ]), "Response should contain information from source documents"
 
     # async def test_basic_query(self, rag_fixture):
     #     async with rag_fixture() as rag:
