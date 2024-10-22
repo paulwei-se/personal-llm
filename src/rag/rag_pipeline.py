@@ -4,11 +4,11 @@ import asyncio
 import logging
 from pydantic import BaseModel
 
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import add_messages
@@ -97,8 +97,9 @@ class RAGPipeline:
             )
             
         prompt = f"""### Instruction:
-You are a helpful AI assistant. Use the provided CONTEXT to answer the following QUESTION accurately. If the context doesn't contain enough information, say so instead of making up information.
-Generate text after the '### RESPONSE' signal.
+You are a helpful AI assistant. Use ONLY the provided CONTEXT to answer the QUESTION accurately. 
+If the context doesn't contain enough information, say so instead of making up information.
+Be specific and include key terms from the context in your response.
 
 ### CONTEXT:
 {context_str}
@@ -118,6 +119,10 @@ Generate text after the '### RESPONSE' signal.
 
     async def add_documents(self, documents: List[str], topic_id: str):
         """Process and index documents for a specific topic."""
+        if not documents:
+            raise ValueError("No documents provided")
+        if not topic_id:
+            raise ValueError("Topic ID must be provided")
         try:
             processed_docs = []
             for doc_id, content in documents.items():
@@ -156,6 +161,12 @@ Generate text after the '### RESPONSE' signal.
         config: Optional[Dict] = None
     ):
         """Process a chat message and return the response."""
+        # Input validation
+        if not message.strip():
+            raise ValueError("Empty query not allowed")
+        if topic_id not in self.vector_stores:
+            raise ValueError(f"Topic {topic_id} not found")
+        
         thread_id = f"{user_id}_{topic_id}"
     
         if config is None:
