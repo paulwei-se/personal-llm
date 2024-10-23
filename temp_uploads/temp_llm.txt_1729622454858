@@ -1,0 +1,4 @@
+LangChain is a framework for developing applications powered by language models. It provides tools for combining LLMs with other sources of computation or knowledge.
+RAG (Retrieval Augmented Generation) combines search with LLM generation to improve accuracy. It helps ground LLM responses in source documents.
+Vector databases store document embeddings for semantic search. They enable efficient similarity matching.
+Python is a high-level programming language known for its simplicity and readability.

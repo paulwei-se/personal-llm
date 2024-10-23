@@ -117,7 +117,7 @@ Be specific and include key terms from the context in your response.
             "context": context
         }
 
-    async def add_documents(self, documents: List[str], topic_id: str):
+    async def add_documents(self, documents: List[str], topic_id: str, metadata: Dict = None):
         """Process and index documents for a specific topic."""
         if not documents:
             raise ValueError("No documents provided")
@@ -125,18 +125,19 @@ Be specific and include key terms from the context in your response.
             raise ValueError("Topic ID must be provided")
         try:
             processed_docs = []
+            chunks = []
             for doc_id, content in documents.items():
-                chunks = self.text_splitter.split_text(content)
+                text_chunks = self.text_splitter.split_text(content)
+                chunks.extend(text_chunks)
                 processed_docs.extend([
                     Document(
                         page_content=chunk,
                         metadata={
-                            "topic_id": topic_id,
-                            "doc_id": doc_id,
-                            "source": content[:100]  # Store first 100 chars as source reference
+                            **(metadata or {}),
+                            "chunk_index": len(processed_docs) + i,
                         }
                     )
-                    for chunk in chunks
+                    for i, chunk in enumerate(text_chunks)
                 ])
 
             if topic_id not in self.vector_stores:
@@ -148,9 +149,42 @@ Be specific and include key terms from the context in your response.
                 self.vector_stores[topic_id].add_documents(processed_docs)
                 
             logger.info(f"Added {len(processed_docs)} chunks to topic {topic_id}")
+            return chunks
             
         except Exception as e:
             logger.error(f"Error adding documents: {str(e)}")
+            raise
+
+    async def remove_documents(self, doc_ids: List[str], topic_id: str) -> bool:
+        """Remove documents from the vector store for a specific topic."""
+        if topic_id not in self.vector_stores:
+            raise ValueError(f"Topic {topic_id} not found")
+            
+        try:
+            vector_store = self.vector_stores[topic_id]
+            
+            # Find all UUIDs that match the given doc_ids
+            uuids_to_remove = []
+            for uuid, doc in vector_store.docstore._dict.items():
+                if doc.metadata.get("doc_id") in doc_ids:
+                    uuids_to_remove.append(uuid)
+                    
+            if not uuids_to_remove:
+                raise ValueError(f"No documents found with IDs: {doc_ids}")
+            
+            logger.debug(f"Removing UUIDs: {uuids_to_remove} for doc_ids: {doc_ids}")
+            
+            # Remove documents from vector store
+            await vector_store.adelete(uuids_to_remove)
+                
+            # Clean up empty topics
+            if len(vector_store.docstore._dict) == 0:
+                del self.vector_stores[topic_id]
+                    
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error removing documents: {str(e)}")
             raise
 
     async def chat(
