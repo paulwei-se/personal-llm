@@ -1,8 +1,6 @@
 from typing import Annotated, Dict, List, Optional
 from typing_extensions import TypedDict
-import asyncio
 import logging
-from pydantic import BaseModel
 
 from langchain_community.vectorstores import FAISS
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
@@ -13,9 +11,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import ToolNode
 
-from src.llm.llama_model import LlamaModel
 
 logger = logging.getLogger(__name__)
 

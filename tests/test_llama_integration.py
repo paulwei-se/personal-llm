@@ -5,7 +5,6 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.llm.llama_model import LlamaModel
-from src.document_intelligence import DocumentIntelligence
 
 async def test_llama_basic():
     llm = LlamaModel()

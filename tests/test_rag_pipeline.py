@@ -5,7 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 import pytest_asyncio
 import asyncio
-from typing import Dict, List
+from typing import List
 import uuid
 import logging
 from src.rag.rag_pipeline import RAGPipeline

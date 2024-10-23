@@ -1,9 +1,8 @@
 # main.py
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Set
-import asyncio
+from typing import Dict, Set
 import time
 import os
 import sys

@@ -1,12 +1,10 @@
 import cv2
 import pytesseract
 from PIL import Image
-import numpy as np
-import PyPDF2
 import docx
 import io
 import logging
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 from pathlib import Path
 import fitz  # PyMuPDF for better PDF handling
 

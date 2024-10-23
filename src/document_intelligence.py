@@ -3,7 +3,6 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.document_processing.processor import DocumentProcessor, chunk_document
 from src.search.semantic_search import SemanticSearch
-from src.qa_summary.qa_summarizer import QASummarizer
 from src.ethical_ai.bias_detector import BiasDetector
 from src.ethical_ai.explainer import AIExplainer
 from src.llm.llama_model import LlamaModel

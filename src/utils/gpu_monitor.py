@@ -1,5 +1,4 @@
 import torch
-import psutil
 import threading
 import time
 from typing import Dict, Optional
